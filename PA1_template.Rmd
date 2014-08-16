@@ -14,13 +14,6 @@ if (!file.exists(dataFile)) {
 }
 
 act <- read.csv(dataFile)
-
-# Filter out entries with NA values
-#completeAct <- act[complete.cases(act),]
-
-# Provide a summary of the data
-summary(act)
-
 ```
 
 ## What is mean total number of steps taken per day?
@@ -30,40 +23,24 @@ summary(act)
 > Calculate and report the mean and median total number of steps taken per day
 
 ```{r echo = TRUE}
-
 # Create data table and filter out incomplete cases
 library(data.table)
+# Creating data.table to aid in aggregate calculation
 dt <- data.table(act[complete.cases(act),])
 
-# Get aggregate values for steps by day
-aggAct <- dt[,list(mean=mean(steps),median=median(steps),sum=sum(steps)), by = date]
-
+# Get aggregate sum for steps by day
+aggAct <- dt[,list(steps=sum(steps)), by = date]
+# Translate factors to dates for charting purposes
 aggAct$date <- as.Date(aggAct$date)
-
-# Display data
-aggAct
-
-# Median value ends up being zero for all days. Seems odd but tis the case.
-# > summary(aggAct)
-#     steps                date          interval     
-# Min.   :  0.00   2012-10-02:  288   Min.   :   0.0  
-# 1st Qu.:  0.00   2012-10-03:  288   1st Qu.: 588.8  
-# Median :  0.00   2012-10-04:  288   Median :1177.5  
-# Mean   : 37.38   2012-10-05:  288   Mean   :1177.5  
-# 3rd Qu.: 12.00   2012-10-06:  288   3rd Qu.:1766.2  
-# Max.   :806.00   2012-10-07:  288   Max.   :2355.0  
-#                  (Other)   :13536  
-
-# Take one day, display all the step values, and calculate median
-
-#> median(c(0,0,0,0,0,5,100))
-#[1] 0
 
 # Make a histogram of the total number of steps taken each day
 library(ggplot2)
-# This provides the sum by date
-qplot(date, sum, data = aggAct, xlab = "Dates", ylab="Total step count", geom="histogram", stat="identity") 
+qplot(date, steps, data = aggAct, xlab = "Dates", ylab="Total step count", geom="histogram", stat="identity") 
 
+# Calculate and report the mean and median total number of steps taken per day.
+# Interpreting this as asking for the mean and median of the daily step total values.
+mean(aggAct$steps)
+median(aggAct$steps)
 ```
 
 ## What is the average daily activity pattern?
@@ -73,6 +50,15 @@ qplot(date, sum, data = aggAct, xlab = "Dates", ylab="Total step count", geom="h
 > Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
 
 ```{r echo = TRUE}
+# Aggreagate by interval
+aggAct <- dt[,list(steps=mean(steps)), by = interval]
+
+# Make a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken,
+# averaged across all days (y-axis)
+plot(aggAct$interval, aggAct$steps, type = "l", xlab="Interval", ylab="Average number of steps") 
+
+# Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+aggAct[with(aggAct, order(-steps)), interval][1]
 ```
 
 ## Imputing missing values
@@ -88,6 +74,38 @@ qplot(date, sum, data = aggAct, xlab = "Dates", ylab="Total step count", geom="h
 > Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
 
 ```{r echo = TRUE}
+# Calculate and report the total number of missing values in the dataset (i.e. the total number of rows 
+# with NAs)
+length(which(is.na(act$steps)))
+
+# Devise a strategy for filling in all of the missing values in the dataset. The strategy does not need to be 
+# sophisticated. For example, you could use the mean/median for that day, or the mean for that 5-minute interval, etc.
+
+# Create a new dataset that is equal to the original dataset but with the missing data filled in.
+# Substituting rounded mean value for interval NA value is from
+act$steps[is.na(act$steps)] <- ave(act$steps, 
+                                   act$interval, 
+                                   FUN = function(x) round(mean(x, na.rm = TRUE)))[c(which(is.na(act$steps)))]
+length(which(is.na(act$steps)))
+
+# Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of
+# steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact
+# of imputing missing data on the estimates of the total daily number of steps?
+
+# Creating data.table to aid in aggregate calculation
+dt <- data.table(act)
+
+# Get aggregate sum for steps by day
+aggAct <- dt[,list(steps=sum(steps)), by = date]
+# Translate factors to dates for charting purposes
+aggAct$date <- as.Date(aggAct$date)
+
+qplot(date, steps, data = aggAct, xlab = "Dates", ylab="Total step count", geom="histogram", stat="identity") 
+
+# Was 10766 without imputing
+mean(aggAct$steps)
+# Was 10765 without imputing
+median(aggAct$steps)
 ```
 
 ## Are there differences in activity patterns between weekdays and weekends?
@@ -101,4 +119,25 @@ qplot(date, sum, data = aggAct, xlab = "Dates", ylab="Total step count", geom="h
 > Your plot will look different from the one above because you will be using the activity monitor data. Note that the above plot was made using the lattice system but you can make the same version of the plot using any plotting system you choose.
 
 ```{r echo = TRUE}
+# Create a new factor variable in the dataset with two levels – “weekday” and “weekend” indicating whether a given date
+# is a weekday or weekend day.
+library(data.table)
+dt <- data.table(act[complete.cases(act),])
+dt$date <- as.Date(dt$date)
+dt$date.type <- ifelse(is.element(weekdays(dt$date), c("Saturday","Sunday")), "weekend", "weekday")
+dt$date.type <- as.factor(dt$date.type)
+
+aggAct <- dt[,list(steps=mean(steps)), by = list(interval, date.type)]
+
+# Make a panel plot containing a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average
+# number of steps taken, averaged across all weekday days or weekend days (y-axis).
+
+par(mfrow = c(2, 1))
+weekdayAggAct <- aggAct[date.type == "weekday",]
+weekdayAggAct <- weekdayAggAct[,list(steps=mean(steps)), by = interval]
+plot(weekdayAggAct$interval, weekdayAggAct$steps, type="l", xlab="Interval", ylab="Number of steps", main="Weekdays") 
+weekendAggAct <- aggAct[date.type == "weekend",]
+weekendAggAct <- weekendAggAct[,list(steps=mean(steps)), by = interval]
+plot(weekendAggAct$interval, weekendAggAct$steps, type="l", xlab="Interval", ylab="Number of steps", main="Weekends") 
+title( "Step Count Comparison", outer = TRUE )
 ```
